@@ -16,7 +16,10 @@ from util import manhattanDistance
 from game import Directions
 import random, util
 
+from game import Actions
 from game import Agent
+from numpy import inf
+import math
 
 class ReflexAgent(Agent):
     """
@@ -84,8 +87,85 @@ def scoreEvaluationFunction(currentGameState, index):
     This evaluation function is meant for use with adversarial search agents
     (not reflex agents).
     """
-    return currentGameState.getScore()[index]
 
+
+#     currPos = currentGameState.getPacmanPosition(index)
+#     currFood = currentGameState.getFood()
+#     currGhostStates = currentGameState.getGhostStates()
+#     currScaredTimes = [ghostState.scaredTimer for ghostState in currGhostStates]
+#     currCapsule = currentGameState.getCapsules()
+#     score = 0 
+#     minGhost = 1e7
+#     sumGhost = 0
+#     capsuleScore = 0
+    lose = -1e7
+    win = 1e7
+    
+    if currentGameState.isWin():
+        return win
+    if currentGameState.isLose():
+        return lose
+    currPos = currentGameState.getPacmanPosition(index)
+    currGhostStates = currentGameState.getGhostStates()
+    currFood = currentGameState.getFood()
+    currCapsules = currentGameState.getCapsules()
+    currScaredTimes = [ghostState.scaredTimer for ghostState in currGhostStates]
+    currFoodList = currFood.asList()
+    ghosts = []
+    min_ghost = 1e7
+    for ghostState in currGhostStates:
+        if ghostState.scaredTimer == 0:
+            little_ghost = manhattanDistance(ghostState.getPosition(),currPos)
+            ghosts.append(little_ghost)
+            if (little_ghost < min_ghost):
+                min_ghost = little_ghost
+    if (min_ghost == 1e7):
+        min_ghost = -2
+
+        
+    scared_ghosts = []
+    min_scared_ghost = 1e7 
+    for ghostState in currGhostStates:
+        if ghostState.scaredTimer > 0:
+            scared_little = manhattanDistance(ghostState.getPosition(),currPos)
+            scared_ghosts.append(scared_little)
+            if (min_scared_ghost > scared_little):
+                min_scared_ghost = scared_little
+                                              
+    if min_scared_ghost == 1e7:
+        min_scared_ghost = 0
+        
+    food_dis = []
+    min_food = 1e7
+    for food in currFoodList:
+        one_food = manhattanDistance(food, currPos)
+        food_dis.append(one_food)
+        if one_food < min_food:
+            min_food = one_food
+
+    #No capsule when unnecessary, more closer distance to food, go for food, no ghost near by, more close to the scared ghost
+    #minus the min in order to get more closer, minus 1/min or + min to get further (+min is worse than -1/min)
+    return currentGameState.getScore()[0]*10-33*len(currCapsules)-1.5*min_food-5*len(currFoodList)-2*(1/min_ghost)-2*min_scared_ghost
+
+#     nearest_food = min(manhattanDistance(food,currPos) for food in currFood.asList())
+#     for ghost in currGhostStates:
+#         ghostDis = (manhattanDistance(ghost.getPosition(), currPos))
+#         sumGhost += ghostDis
+#         if ghostDis < minGhost:
+#             minGhost = ghostDis
+#         if ghost.scaredTimer > 0:
+#             score += (manhattanDistance(ghost.getPosition(), currPos))*5
+#         elif manhattanDistance(ghost.getPosition(), currPos)<5:
+#             score -= (manhattanDistance(ghost.getPosition(), currPos))*2
+        
+# #     for capsule in currCapsule:
+# #         if (sumGhost <=15) and 
+
+# #     return currentGameState.getScore()[index]*10 + (1/ nearest_food) + score
+#     if (minGhost)>20:
+#         return currentGameState.getScore()[index]*10 + ((1/ nearest_food)**2)*minGhost*0.8 + score
+#     else:
+#         return currentGameState.getScore()[index]*10 + ((1/ nearest_food)**2)*minGhost + score
 class MultiAgentSearchAgent(Agent):
     """
     This class provides some common elements to all of your
@@ -122,7 +202,85 @@ class MultiPacmanAgent(MultiAgentSearchAgent):
         legal moves.
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+
+#         best_score, best_choice = self.getMinMax(gameState,0,0,0)
+#       Inspired by psudocode from YouTube https://www.youtube.com/watch?v=u8JNW-2Ei8w and psudocode from Kaiqi Zhang
+        best_score, best_choice = self.getExpMax(gameState,0,0,0)
+        return best_choice
+    def getExpMax(self, gameState, agent_index, depth, getExpMax_getMax_getExp):
+        if (getExpMax_getMax_getExp == 0):
+            if agent_index >= gameState.getNumAgents():
+                depth += 1
+                agent_index = 0
+            if (depth==self.depth or gameState.isWin() or gameState.isLose()):
+                return self.evaluationFunction(gameState),Directions.STOP
+            elif (agent_index == 0):
+                return self.getExpMax(gameState, agent_index, depth ,1)
+            else:
+                return self.getExpMax(gameState, agent_index, depth, 2)
+        elif (getExpMax_getMax_getExp == 1): 
+            actions = gameState.getLegalActions(agent_index) 
+            best_score = float(-inf)
+            best_choice = Directions.STOP          
+            if not actions:
+                return self.evaluationFunction(gameState),Directions.STOP             
+            for action in actions:
+                next_step = gameState.generateSuccessor(agent_index, action)
+                score, choice = self.getExpMax(next_step,(agent_index+1), depth, 0)
+                if score > best_score:
+                    best_score = score
+                    best_choice = action
+            return best_score, best_choice
+        elif (getExpMax_getMax_getExp == 2):     
+            actions = gameState.getLegalActions(agent_index)
+            best_score = 0
+            best_choice = Directions.STOP
+            if not actions:
+                return self.evaluationFunction(gameState),Directions.STOP                                 
+            for action in actions:
+                next_step = gameState.generateSuccessor(agent_index, action)
+                score, choice = self.getExpMax(next_step,(agent_index+1),depth,0)
+                choice = action
+                best_score += score * (1/len(actions))
+            return best_score, best_choice
+    
+    def getMinMax(self, gameState, agent_index, depth, getMinMax_getMax_getMin):
+        if getMinMax_getMax_getMin == 0:
+            if agent_index >= gameState.getNumAgents():
+                agent_index = 0
+                depth += 1
+            if (depth ==self.depth or gameState.isWin() or gameState.isLose()):
+                return self.evaluationFunction(gameState),Directions.STOP
+            elif (agent_index == 0):
+                return self.getMinMax(gameState, agent_index, depth, 1)
+            else:
+                return self.getMinMax(gameState, agent_index, depth, 2)
+        elif getMinMax_getMax_getMin == 1:
+            actions = gameState.getLegalActions(agent_index)
+            if not actions:
+                return self.evaluationFunction(gameState),Directions.STOP       
+            best_score = float(-inf)
+            best_choice = Directions.STOP
+            for action in actions:
+                next_step = gameState.generateSuccessor(agent_index, action)
+                score, choice= self.getMinMax(next_step, (agent_index+1), depth, 0)
+                if score > best_score:
+                    best_score = score
+                    best_choice = action
+            return best_score, best_choice
+        elif getMinMax_getMax_getMin == 2:
+            actions = gameState.getLegalActions(agent_index)
+            if not actions:
+                return self.evaluationFunction(gameState)       
+            best_score = float(inf)
+            best_choice = Directions.STOP
+            for action in actions:
+                next_step = gameState.generateSuccessor(agent_index, action)
+                score, choice= self.getMinMax(next_step, (agent_index+1), depth, 0)
+                if score < best_score:
+                    best_score = score
+                    best_choice = action
+            return best_score, best_choice
         
 class RandomAgent(MultiAgentSearchAgent):
     def getAction(self, gameState):
